@@ -4,33 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Tuple
 from activation_functions import *
 from utils import *
-
-
-
-class LossFunction(ABC):
-    @abstractmethod
-    def loss(self, y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
-        pass
-
-    @abstractmethod
-    def derivative(self, y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
-        pass
-
-
-class SquaredError(LossFunction):
-    def loss(self, y_true, y_pred):
-        pass
-
-    def derivative(self, y_true, y_pred):
-        pass
-
-
-class CrossEntropy(LossFunction):
-    def loss(self, y_true, y_pred):
-        pass
-
-    def derivative(self, y_true, y_pred):
-        pass
+from loss_functions import *
 
 
 
