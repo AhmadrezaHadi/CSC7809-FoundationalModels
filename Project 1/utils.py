@@ -19,3 +19,16 @@ def batch_generator(train_x: np.ndarray, train_y: np.ndarray, batch_size: int):
         index += batch_size
 
         yield batch_x, batch_y
+
+def glorot_initialization(fan_in, fan_out):
+    """
+    Glorot initialization
+
+    :param fan_in (int): Number of neurons in the previous layer
+    :param fan_out (int): Number of neurons in the current layer
+
+    :return weight_matrix: Weight matrix for the current layer
+    """
+
+    limit = np.sqrt(6/ (fan_in + fan_out))
+    return np.random.uniform(-limit, limit, size=(fan_out, fan_in))

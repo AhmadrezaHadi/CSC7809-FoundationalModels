@@ -55,21 +55,13 @@ class ReLU(ActivationFunction):
         return result
 
 
-class Softmax(ActivationFunction):
-    # TODO Complete this
-    def forward(self, x):
-        result = np.exp(x) / np.sum(np.exp(x), axis=1, keepdims=True)
-
-    def derivative(self, x):
-        pass
-
-
 class Linear(ActivationFunction):
     def forward(self, x):
         return x
     
     def derivative(self, x):
         return np.ones_like(x)
+
 
 class Softplus(ActivationFunction):
     def forward(self, x):
@@ -88,3 +80,12 @@ class Mish(ActivationFunction):
         softplus_val = np.log(1 + np.exp(x))
         tanh_softplus = np.tanh(softplus_val)
         return tanh_softplus + x * (1 - tanh_softplus ** 2) * (1 / (1 + np.exp(-x)))
+
+
+class Softmax(ActivationFunction):
+    # TODO Complete this
+    def forward(self, x):
+        result = np.exp(x) / np.sum(np.exp(x), axis=1, keepdims=True)
+
+    def derivative(self, x):
+        pass

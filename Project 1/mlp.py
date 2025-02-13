@@ -27,8 +27,8 @@ class Layer:
         self.delta = None
 
         # Initialize weights and biaes
-        self.W = None  # weights
-        self.b = None  # biases
+        self.W = glorot_initialization(fan_in, fan_out)
+        self.b = glorot_initialization(1, fan_out)
 
     def forward(self, h: np.ndarray):
         """
@@ -37,7 +37,9 @@ class Layer:
         :param h: input to layer
         :return: layer activations
         """
-        self.activations = None
+        self.activations = np.dot(self.W, h)
+        self.activations += self.b
+        self.activations = self.activation_function.forward(x = self.activations)
 
         return self.activations
 
@@ -49,9 +51,9 @@ class Layer:
         :param delta: delta term from layer above
         :return: (weight gradients, bias gradients)
         """
-        dL_dW = None
-        dL_db = None
-        self.delta = None
+        self.delta = delta * self.activation_function.derivative(self.activations)
+        dL_db = np.sum(self.delta, axis=1, keepdims=True)
+        dL_dW = np.dot(self.delta, h.T)
         return dL_dW, dL_db
 
 
