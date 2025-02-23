@@ -2,10 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from typing import Tuple
-from activation_functions import *
-from utils import *
-from loss_functions import *
-
+from activation_functions import Sigmoid, Tanh, ReLU, Linear, Softmax, Mish, Linear, ActivationFunction
+from utils import glorot_initialization, batch_generator
+from loss_functions import LossFunction, SquaredError, CrossEntropy
 
 
 class Layer:
@@ -28,7 +27,7 @@ class Layer:
 
         # Initialize weights and biaes
         self.W = glorot_initialization(fan_in, fan_out)
-        self.b = glorot_initialization(1, fan_out)
+        self.b = np.zeros((1, fan_out))
 
     def forward(self, h: np.ndarray):
         """
@@ -37,42 +36,50 @@ class Layer:
         :param h: input to layer
         :return: layer activations
         """
-        self.activations = np.dot(self.W, h)
-        self.activations += self.b
-        self.activations = self.activation_function.forward(x = self.activations)
+        self.activations = np.dot(h, self.W) + self.b
+        self.activations = self.activation_function.forward(self.activations)
 
         return self.activations
 
-    def backward(self, h: np.ndarray, delta: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def backward(self, h: np.ndarray, delta: np.ndarray):
         """
-        Apply backpropagation to this layer and return the weight and bias gradients
+        :param h: (batch_size, fan_in) - the *input* to this layer from the forward pass
+        :param delta: dL/da for *this* layer
+        :return: (dW, dB) for this layer
+        """
+        # 1) Convert from dL/da to dL/dz by multiplying elementwise by activation derivative
+        dZ = delta * self.activation_function.derivative(self.activations)
+        
+        # 2) Gradients wrt W and b
+        dW = np.dot(h.T, dZ)
+        dB = np.sum(dZ, axis=0, keepdims=True)
 
-        :param h: input to this layer
-        :param delta: delta term from layer above
-        :return: (weight gradients, bias gradients)
-        """
-        self.delta = delta * self.activation_function.derivative(self.activations)
-        dL_db = np.sum(self.delta, axis=1, keepdims=True)
-        dL_dW = np.dot(self.delta, h.T)
-        return dL_dW, dL_db
+        # 3) Prepare the delta for the next layer below
+        #    (this is dL/da of the *previous* layer)
+        self.delta = np.dot(dZ, self.W.T)
+
+        return dW, dB
+
+
 
 
 class MultilayerPerceptron:
-    def __init__(self, layers: Tuple[Layer]):
+    def __init__(self, layers: Tuple[Layer, ...]):
         """
         Create a multilayer perceptron (densely connected multilayer neural network)
         :param layers: list or Tuple of layers
         """
         self.layers = layers
-
+        
     def forward(self, x: np.ndarray) -> np.ndarray:
         """
         This takes the network input and computes the network output (forward propagation)
         :param x: network input
         :return: network output
         """
-
-        return None
+        for layer in self.layers:
+            x = layer.forward(x)
+        return x
 
     def backward(self, loss_grad: np.ndarray, input_data: np.ndarray) -> Tuple[list, list]:
         """
@@ -83,9 +90,17 @@ class MultilayerPerceptron:
         """
         dl_dw_all = []
         dl_db_all = []
+        delta = loss_grad
+        for i in reversed(range(len(self.layers))):
+            layer = self.layers[i]
 
+            prev_act = input_data if i == 0 else self.layers[i-1].activations
+            dW, dB = layer.backward(prev_act, delta)
+            delta = layer.delta
+            dl_dw_all.insert(0, dW)
+            dl_db_all.insert(0, dB)
 
-        return None, None
+        return dl_dw_all, dl_db_all
 
     def train(self, train_x: np.ndarray, train_y: np.ndarray, val_x: np.ndarray, val_y: np.ndarray, loss_func: LossFunction, learning_rate: float=1E-3, batch_size: int=16, epochs: int=32) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -101,7 +116,36 @@ class MultilayerPerceptron:
         :param epochs: number of epochs
         :return:
         """
-        training_losses = None
-        validation_losses = None
+        training_losses = []
+        validation_losses = []
+        
+        
+        for z in range(epochs):
+            running_loss = 0
+            for batch_x, batch_y in batch_generator(train_x, train_y, batch_size):
+                batch_y = batch_y.reshape(-1, 1)
+                output = self.forward(batch_x)
+                loss = loss_func.loss(batch_y, output)
+                loss_grad = loss_func.derivative(batch_y, output)
+                dl_dw_all, dl_db_all = self.backward(loss_grad, batch_x)
+                for i, (dl_dw, dl_db) in enumerate(zip(dl_dw_all, dl_db_all)):
+                    self.layers[i].W -= learning_rate * dl_dw
+                    self.layers[i].b -= learning_rate * dl_db
+                
+                running_loss += loss
 
+            val_loss = 0
+            for batch_x, batch_y in batch_generator(val_x, val_y, batch_size):
+                output = self.forward(batch_x)
+                loss = loss_func.loss(batch_y, output)
+                val_loss += loss
+
+            # running_loss /= train_x.shape[0]
+            # val_loss /= val_x.shape[0]
+            training_losses.append(running_loss)
+            validation_losses.append(val_loss)
+
+            print("-------------------------------------")
+            print(f"Epoch: {z}, Train Loss: {running_loss}, Validation Loss: {val_loss}")
+         
         return training_losses, validation_losses

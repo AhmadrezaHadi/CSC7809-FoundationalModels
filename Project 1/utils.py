@@ -29,6 +29,6 @@ def glorot_initialization(fan_in, fan_out):
 
     :return weight_matrix: Weight matrix for the current layer
     """
-
-    limit = np.sqrt(6/ (fan_in + fan_out))
-    return np.random.uniform(-limit, limit, size=(fan_out, fan_in))
+    
+    limit = np.sqrt(6 / (fan_in + fan_out))
+    return np.random.uniform(-limit, limit, size=(fan_in, fan_out))
