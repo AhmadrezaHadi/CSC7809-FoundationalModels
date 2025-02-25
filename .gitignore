@@ -174,3 +174,8 @@ cython_debug/
 
 test.py
 test.ipynb
+
+Project 1/t10k-images-idx3-ubyte.gz
+Project 1/t10k-labels-idx1-ubyte.gz
+Project 1/train-images-idx3-ubyte.gz
+Project 1/train-labels-idx1-ubyte.gz

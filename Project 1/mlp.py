@@ -8,7 +8,13 @@ from loss_functions import LossFunction, SquaredError, CrossEntropy
 
 
 class Layer:
-    def __init__(self, fan_in: int, fan_out: int, activation_function: ActivationFunction):
+    def __init__(
+        self, 
+        fan_in: int, 
+        fan_out: int, 
+        activation_function: ActivationFunction,
+        dropout_rate: float = 0.0  
+    ):
         """
         Initializes a layer of neurons
 
@@ -19,45 +25,53 @@ class Layer:
         self.fan_in = fan_in
         self.fan_out = fan_out
         self.activation_function = activation_function
-
-        # this will store the activations (forward prop)
+        self.dropout_rate = dropout_rate
+        self.mask = None
         self.activations = None
-        # this will store the delta term (dL_dPhi, backward prop)
         self.delta = None
+        self.z = None
 
         # Initialize weights and biaes
         self.W = glorot_initialization(fan_in, fan_out)
         self.b = np.zeros((1, fan_out))
 
-    def forward(self, h: np.ndarray):
+    def forward(self, h: np.ndarray, training: bool = True) -> np.ndarray:
         """
         Computes the activations for this layer
 
         :param h: input to layer
+        :param training: if True, apply dropout
         :return: layer activations
         """
-        self.activations = np.dot(h, self.W) + self.b
-        self.activations = self.activation_function.forward(self.activations)
+        self.z = np.dot(h, self.W) + self.b
+        self.activations = self.activation_function.forward(self.z)
+
+        if training and self.dropout_rate > 0.0:
+            keep_prob = 1.0 - self.dropout_rate
+            self.mask = (np.random.rand(*self.activations.shape) < keep_prob)
+            self.activations = self.activations * self.mask / keep_prob
+        else:
+            self.mask = None
 
         return self.activations
 
-    def backward(self, h: np.ndarray, delta: np.ndarray):
+    def backward(self, h: np.ndarray, delta: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        :param h: (batch_size, fan_in) - the *input* to this layer from the forward pass
-        :param delta: dL/da for *this* layer
-        :return: (dW, dB) for this layer
+        :param h: input to this layer from forward pass
+        :param delta: dL/da for this layer
+        :return: (dW, dB)
         """
-        # 1) Convert from dL/da to dL/dz by multiplying elementwise by activation derivative
-        dZ = delta * self.activation_function.derivative(self.activations)
+        if self.mask is not None:
+            keep_prob = 1.0 - self.dropout_rate
+            delta = delta * self.mask / keep_prob
         
-        # 2) Gradients wrt W and b
-        dW = np.dot(h.T, dZ)
-        dB = np.sum(dZ, axis=0, keepdims=True)
+        dZ = self.activation_function.derivative(self.z)
+        delta *= dZ
 
-        # 3) Prepare the delta for the next layer below
-        #    (this is dL/da of the *previous* layer)
-        self.delta = np.dot(dZ, self.W.T)
-
+        dW = np.dot(h.T, delta)
+        dB = np.sum(delta, axis=0, keepdims=True)
+        
+        self.delta = np.dot(delta, self.W.T)
         return dW, dB
 
 
@@ -71,14 +85,14 @@ class MultilayerPerceptron:
         """
         self.layers = layers
         
-    def forward(self, x: np.ndarray) -> np.ndarray:
+    def forward(self, x: np.ndarray, training: bool = True) -> np.ndarray:
         """
         This takes the network input and computes the network output (forward propagation)
         :param x: network input
         :return: network output
         """
         for layer in self.layers:
-            x = layer.forward(x)
+            x = layer.forward(x, training=training)
         return x
 
     def backward(self, loss_grad: np.ndarray, input_data: np.ndarray) -> Tuple[list, list]:
@@ -102,7 +116,17 @@ class MultilayerPerceptron:
 
         return dl_dw_all, dl_db_all
 
-    def train(self, train_x: np.ndarray, train_y: np.ndarray, val_x: np.ndarray, val_y: np.ndarray, loss_func: LossFunction, learning_rate: float=1E-3, batch_size: int=16, epochs: int=32) -> Tuple[np.ndarray, np.ndarray]:
+    def train(
+            self, 
+            train_x: np.ndarray, 
+            train_y: np.ndarray, 
+            val_x: np.ndarray, 
+            val_y: np.ndarray, 
+            loss_func: LossFunction, 
+            learning_rate: float=1E-3, 
+            batch_size: int=16, 
+            epochs: int=32,
+            ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Train the multilayer perceptron
 
@@ -119,14 +143,13 @@ class MultilayerPerceptron:
         training_losses = []
         validation_losses = []
         
-        
-        for z in range(epochs):
+        for epoch in range(epochs):
             running_loss = 0
             for batch_x, batch_y in batch_generator(train_x, train_y, batch_size):
-                batch_y = batch_y.reshape(-1, 1)
-                output = self.forward(batch_x)
+                output = self.forward(batch_x, training=True)
                 loss = loss_func.loss(batch_y, output)
                 loss_grad = loss_func.derivative(batch_y, output)
+
                 dl_dw_all, dl_db_all = self.backward(loss_grad, batch_x)
                 for i, (dl_dw, dl_db) in enumerate(zip(dl_dw_all, dl_db_all)):
                     self.layers[i].W -= learning_rate * dl_dw
@@ -136,16 +159,14 @@ class MultilayerPerceptron:
 
             val_loss = 0
             for batch_x, batch_y in batch_generator(val_x, val_y, batch_size):
-                output = self.forward(batch_x)
+                output = self.forward(batch_x, training=False)
                 loss = loss_func.loss(batch_y, output)
                 val_loss += loss
 
-            # running_loss /= train_x.shape[0]
-            # val_loss /= val_x.shape[0]
-            training_losses.append(running_loss)
-            validation_losses.append(val_loss)
+            training_losses.append(running_loss / train_x.shape[0])
+            validation_losses.append(val_loss / val_x.shape[0])
 
             print("-------------------------------------")
-            print(f"Epoch: {z}, Train Loss: {running_loss}, Validation Loss: {val_loss}")
+            print(f"Epoch: {epoch}, Train Loss: {running_loss}, Validation Loss: {val_loss}")
          
         return training_losses, validation_losses

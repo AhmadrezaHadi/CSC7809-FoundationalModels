@@ -82,22 +82,10 @@ class Mish(ActivationFunction):
         return tanh_softplus + x * (1 - tanh_softplus ** 2) * (1 / (1 + np.exp(-x)))
 
 
-class Softmax:
+class Softmax(ActivationFunction):
     def forward(self, x: np.ndarray) -> np.ndarray:
-        x_shifted = x - np.max(x, axis=-1, keepdims=True)  
-        exp_x = np.exp(x_shifted)
-        return exp_x / np.sum(exp_x, axis=-1, keepdims=True)
+        exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+        return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
     def derivative(self, x: np.ndarray) -> np.ndarray:
-        softmax_x = self.forward(x)  # Compute softmax outputs
-        batch_size, num_classes = softmax_x.shape
-
-        identity = np.eye(num_classes).reshape(1, num_classes, num_classes)
-
-        diag_part = identity * softmax_x[:, :, np.newaxis]
-
-        outer_part = softmax_x[:, :, np.newaxis] * softmax_x[:, np.newaxis, :]
-
-        jacobian = diag_part - outer_part
-
-        return jacobian
+        return np.ones_like(x)  
