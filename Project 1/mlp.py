@@ -35,6 +35,9 @@ class Layer:
         self.W = glorot_initialization(fan_in, fan_out)
         self.b = np.zeros((1, fan_out))
 
+        self.W_cache = np.zeros_like(self.W)
+        self.b_cache = np.zeros_like(self.b)
+
     def forward(self, h: np.ndarray, training: bool = True) -> np.ndarray:
         """
         Computes the activations for this layer
@@ -73,8 +76,6 @@ class Layer:
         
         self.delta = np.dot(delta, self.W.T)
         return dW, dB
-
-
 
 
 class MultilayerPerceptron:
@@ -126,6 +127,9 @@ class MultilayerPerceptron:
             learning_rate: float=1E-3, 
             batch_size: int=16, 
             epochs: int=32,
+            rmsprop: bool = False,
+            beta: float = 0.9,  
+            epsilon: float = 1e-8  
             ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Train the multilayer perceptron
@@ -152,8 +156,15 @@ class MultilayerPerceptron:
 
                 dl_dw_all, dl_db_all = self.backward(loss_grad, batch_x)
                 for i, (dl_dw, dl_db) in enumerate(zip(dl_dw_all, dl_db_all)):
-                    self.layers[i].W -= learning_rate * dl_dw
-                    self.layers[i].b -= learning_rate * dl_db
+                    if rmsprop:
+                        self.layers[i].W_cache = beta * self.layers[i].W_cache + (1 - beta) * (dl_dw ** 2)
+                        self.layers[i].b_cache = beta * self.layers[i].b_cache + (1 - beta) * (dl_db ** 2)
+
+                        self.layers[i].W -= learning_rate * dl_dw / (np.sqrt(self.layers[i].W_cache) + epsilon)
+                        self.layers[i].b -= learning_rate * dl_db / (np.sqrt(self.layers[i].b_cache) + epsilon)
+                    else:
+                        self.layers[i].W -= learning_rate * dl_dw
+                        self.layers[i].b -= learning_rate * dl_db
                 
                 running_loss += loss
 
