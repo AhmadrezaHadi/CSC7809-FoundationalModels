@@ -174,8 +174,18 @@ cython_debug/
 
 test.py
 test.ipynb
+.DS_Store
 
 Project 1/t10k-images-idx3-ubyte.gz
 Project 1/t10k-labels-idx1-ubyte.gz
 Project 1/train-images-idx3-ubyte.gz
 Project 1/train-labels-idx1-ubyte.gz
+Project 1/.DS_Store
+Project 1/Project1 - Ahmadreza Hadi.zip
+
+Project 2/data/
+Project 2/bpe_tokenizer.model
+Project 2/bpe_tokenizer.vocab
+Project 2/corpus.txt
+Project 2/best_model.pth
+
