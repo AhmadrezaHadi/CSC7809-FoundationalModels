@@ -1,5 +1,6 @@
 from dataset import TextDataset
 from gru import GRULanguageModel
+from rnn import RNNModel
 from tokenizer import merge_text_files
 from utils import add_special_tokens, collate_fn
 import torch
@@ -13,17 +14,20 @@ TOKENIZER_PATH = "bpe_tokenizer.model"
 TRAIN_FILE = "data/train.jsonl"
 VAL_FILE = "data/test.jsonl"
 MAX_SEQ_LEN = 128
-BATCH_SIZE = 128
+BATCH_SIZE = 512
 EMBEDD_DIM = 256
 HIDDEN_DIM = 512
 NUM_LAYERS = 6
 DROPOUT = 0.2
 LEARNING_RATE = 0.001
-EPOCHS = 10
+EPOCHS = 100
 
 
 
-def train_model():
+def train_model(model=None, name=None):
+    """
+    Training the model.
+    """
 
     device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -40,15 +44,20 @@ def train_model():
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
 
     # Initialize the model
-    model = GRULanguageModel(
-        vocab_size=vocab_size,
-        embed_dim=EMBEDD_DIM,
-        hidden_dim=HIDDEN_DIM,
-        num_layers=NUM_LAYERS,
-        dropout=DROPOUT,
-    ).to(device)
+    if model is None:
+        model = GRULanguageModel(
+            vocab_size=vocab_size,
+            embed_dim=EMBEDD_DIM,
+            hidden_dim=HIDDEN_DIM,
+            num_layers=NUM_LAYERS,
+            dropout=DROPOUT,
+        ).to(device)
+        name = model._get_name()
+    else:
+        model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=1, factor=0.5, verbose=True)
     criterion = nn.CrossEntropyLoss(ignore_index=3)  # Ignore padding index
@@ -65,7 +74,10 @@ def train_model():
             input_ids, target_ids = input_ids.to(device), target_ids.to(device)
 
             optimizer.zero_grad()
-            logits, _ = model(input_ids)
+            if model._get_name() == "TransformerModel":
+                logits = model(input_ids)
+            else:
+                logits, _ = model(input_ids)
             loss = criterion(logits.view(-1, vocab_size), target_ids.view(-1))
             loss.backward()
             optimizer.step()
@@ -83,7 +95,10 @@ def train_model():
             for input_ids, target_ids in val_loader:
                 input_ids, target_ids = input_ids.to(device), target_ids.to(device)
 
-                logits, _ = model(input_ids)
+                if model._get_name() == "TransformerModel":
+                    logits = model(input_ids)
+                else:
+                    logits, _ = model(input_ids)
                 loss = criterion(logits.view(-1, vocab_size), target_ids.view(-1))
                 total_val_loss += loss.item()
         avg_val_loss = total_val_loss / len(val_loader)
@@ -94,7 +109,7 @@ def train_model():
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             no_improve_epochs = 0
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), f"best_model_{name}.pth")
             print("Model saved.")
         else:
             no_improve_epochs += 1
@@ -106,9 +121,26 @@ def train_model():
 
 if __name__ == "__main__":
 
-    train_loss, val_loss = train_model()
-    print("Training and validation losses:")
-    print("Train Losses:", train_loss)
-    print("Validation Losses:", val_loss)
+    models = [RNNModel]
 
-    
+    for m in models:
+        model = m(
+            vocab_size=10000,
+            embedding_dim=EMBEDD_DIM,
+            hidden_dim=HIDDEN_DIM,
+            num_layers=2,
+            dropout=DROPOUT,
+        )
+        print(f"Training model: {m._get_name()}")
+        train_losses, val_losses = train_model(model=model, name=m._get_name())
+        import matplotlib.pyplot as plt
+        plt.plot(train_losses, label='Train Loss')
+        plt.plot(val_losses, label='Validation Loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title(f'Losses for {m.__name__}')
+        plt.legend()
+        plt.savefig(f"losses_{m.__name__}.png")
+        plt.show()
+        
+

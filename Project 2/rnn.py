@@ -1,37 +1,52 @@
-from torch import nn
+import torch.nn as nn
 import torch
 
 
-class GRULanguageModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=256, hidden_dim=512, num_layers=6, dropout=0.2, pad_token_id=0):
+
+
+class RNNModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, num_layers=2, dropout=0.2, pad_token_id=0):
         """
-        Create a GRU-based language model.
+        Initialize the RNN model.
+
         :param vocab_size: Size of the vocabulary.
         :param embedding_dim: Dimension of the word embeddings.
-        :param hidden_dim: Dimension of the GRU hidden state.
-        :param num_layers: Number of GRU layers.
+        :param hidden_dim: Dimension of the hidden state.
+        :param num_layers: Number of RNN layers.
         :param dropout: Dropout rate.
         :param pad_token_id: Padding token ID.
         """
-        super(GRULanguageModel, self).__init__()
+        super(RNNModel, self).__init__()
 
         # Define the embedding layer
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_token_id)
-        # Define the stacked GRU
-        self.gru = nn.GRU(embedding_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
-        # Output layer that maps hidden state of final GRU to output
+        self.embedding = nn.Embedding(
+            vocab_size, 
+            embedding_dim, 
+            padding_idx=pad_token_id
+        )
+
+        # Define the RNN layer
+        self.rnn = nn.RNN(
+            embedding_dim, 
+            hidden_dim, 
+            num_layers=num_layers, 
+            batch_first=True, 
+            dropout=dropout
+        )
+
+        # Output layer that maps hidden state of final RNN to output
         self.fc = nn.Linear(hidden_dim, vocab_size)
-    
+
     def forward(self, input_ids, hidden=None):
         """
-        Compute the forward pass of the GRU model.
+        Compute the forward pass of the RNN model.
+
         :param input_ids: Input token IDs.
         :param hidden: Initial hidden state (optional).
         :return: Output logits and the final hidden state.
         """
-
         embeds = self.embedding(input_ids)
-        output, hidden = self.gru(embeds, hidden)
+        output, hidden = self.rnn(embeds, hidden)
         logits = self.fc(output)
 
         return logits, hidden

@@ -1,37 +1,41 @@
-from torch import nn
 import torch
+import torch.nn as nn
 
 
-class GRULanguageModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=256, hidden_dim=512, num_layers=6, dropout=0.2, pad_token_id=0):
+class LSTMModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim=256, hidden_dim=512, num_layers=2, dropout=0.2, pad_token_id=0):
         """
-        Create a GRU-based language model.
+        Create an LSTM-based language model.
         :param vocab_size: Size of the vocabulary.
         :param embedding_dim: Dimension of the word embeddings.
-        :param hidden_dim: Dimension of the GRU hidden state.
-        :param num_layers: Number of GRU layers.
+        :param hidden_dim: Dimension of the hidden state.
+        :param num_layers: Number of LSTM layers.
         :param dropout: Dropout rate.
         :param pad_token_id: Padding token ID.
         """
-        super(GRULanguageModel, self).__init__()
+
+        super(LSTMModel, self).__init__()
 
         # Define the embedding layer
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=pad_token_id)
-        # Define the stacked GRU
-        self.gru = nn.GRU(embedding_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
-        # Output layer that maps hidden state of final GRU to output
+
+        # Define the stacked LSTM
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
+
+        # Output layer that maps hidden state of final LSTM to output
         self.fc = nn.Linear(hidden_dim, vocab_size)
+
     
     def forward(self, input_ids, hidden=None):
         """
-        Compute the forward pass of the GRU model.
+        Compute the forward pass of the LSTM model.
         :param input_ids: Input token IDs.
         :param hidden: Initial hidden state (optional).
         :return: Output logits and the final hidden state.
         """
 
         embeds = self.embedding(input_ids)
-        output, hidden = self.gru(embeds, hidden)
+        output, hidden = self.lstm(embeds, hidden)
         logits = self.fc(output)
 
         return logits, hidden
