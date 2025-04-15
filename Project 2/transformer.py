@@ -39,27 +39,26 @@ class DecoderOnlyLM(nn.Module):
 
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.positional_encoding = PositionalEncoding(d_model, dropout)
-        self.transformer_decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_model, nhead, dim_feedforward=d_model * 4, dropout=dropout, batch_first=True),
-            num_layers=num_layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model, nhead, dim_feedforward=d_model * 4, dropout=dropout, batch_first=True
         )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers)
         self.fc_out = nn.Linear(d_model, vocab_size)
 
-    def forward(self, x, memory=None):
+    def forward(self, x):
         # x: (batch_size, seq_len)
         x = self.embedding(x) * (self.d_model ** 0.5)
         x = self.positional_encoding(x)
         # x: (batch_size, seq_len, d_model)
         mask = generate_square_subsequent_mask(x.size(1)).to(x.device)
-        x = self.transformer_decoder(x, memory, tgt_mask=mask)
+        x = self.transformer(x, mask=mask)
         x = self.fc_out(x)
         return x
 
-    def predict_next_token(self, input_ids, memory=None, temperature=1.0):
+    def predict_next_token(self, input_ids, temperature=1.0):
         """
         Predict the next token ID (and hidden state) from the last token in input_ids.
         :param input_ids: Input token IDs.
-        :param memory: Memory (optional).
         :param temperature: Sampling temperature.
         :return: next token ID, hidden state
         """
@@ -67,7 +66,7 @@ class DecoderOnlyLM(nn.Module):
         self.eval()
 
         with torch.no_grad():
-            logits = self.forward(input_ids, memory)
+            logits = self.forward(input_ids)
             logits = logits[:, -1, :] / temperature
             probs = torch.softmax(logits, dim=-1)
             next_token_id = torch.multinomial(probs, num_samples=1)
@@ -90,13 +89,14 @@ class DecoderOnlyLM(nn.Module):
         input_ids = tokenizer.encode(prompt, out_type=int)
         input_tensor = torch.tensor(input_ids, dtype=torch.long).to(device).unsqueeze(0)
         generated_ids = []
-        memory = None
 
         for _ in range(max_length):
-            next_token_id = self.predict_next_token(input_tensor, memory, temperature)
+            next_token_id = self.predict_next_token(input_tensor, temperature)
             generated_ids.append(next_token_id.item())
-            input_tensor = torch.cat([input_tensor, next_token_id.unsqueeze(0).unsqueeze(0)], dim=1)
-
+            print(f"{input_tensor.shape}")
+            print(f"{next_token_id.unsqueeze(0).shape}")
+            input_tensor = torch.cat([input_tensor, next_token_id.unsqueeze(0)], dim=1)
+            print(f"{input_tensor.shape}")
             if eos_token_ids and next_token_id.item() in eos_token_ids:
                 break
         generated_text = tokenizer.decode(generated_ids)
