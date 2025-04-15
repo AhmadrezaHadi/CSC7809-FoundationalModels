@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+def generate_square_subsequent_mask(sz):
+    return torch.triu(torch.full((sz, sz), float('-inf')), diagonal=1)
 
 
 class PositionalEncoding(nn.Module):
@@ -22,88 +24,82 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1), :]
         return self.dropout(x)
 
-class TransformerModel(nn.Module):
-    def __init__(self, vocab_size, embed_dim=256, num_heads=8, num_layers=6, dropout=0.2, pad_token_id=0):
-        """
-        Create a Transformer-based language model.
-        :param vocab_size: Size of the vocabulary.
-        :param embed_dim: Dimension of the word embeddings.
-        :param num_heads: Number of attention heads.
-        :param num_layers: Number of Transformer layers.
-        :param dropout: Dropout rate.
-        :param pad_token_id: Padding token ID.
-        """
-        super(TransformerModel, self).__init__()
 
-        # Define the embedding layer
-        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_token_id)
-        
-        # Define positional encoding
-        self.positional_encoding = PositionalEncoding(embed_dim, dropout)
-        # Define the Transformer encoder
-        encoder_layers = nn.TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward=embed_dim * 4, dropout=dropout, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
-        # Output layer that maps hidden state of final Transformer layer to output
-        self.fc = nn.Linear(embed_dim, vocab_size)
-        self.dropout = nn.Dropout(dropout)
-        
-    def forward(self, input_ids):
+class DecoderOnlyLM(nn.Module):
+    def __init__(self, vocab_size, d_model, nhead, num_layers, dropout=0.2):
+        super(DecoderOnlyLM, self).__init__()
+
+        assert d_model % nhead == 0, "d_model must be divisible by nhead"
+
+        self.d_model = d_model  # Dimension of the model
+        self.nhead = nhead
+        self.num_layers = num_layers
+        self.vocab_size = vocab_size
+        self.dropout = dropout
+
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.positional_encoding = PositionalEncoding(d_model, dropout)
+        self.transformer_decoder = nn.TransformerDecoder(
+            nn.TransformerDecoderLayer(d_model, nhead, dim_feedforward=d_model * 4, dropout=dropout, batch_first=True),
+            num_layers=num_layers
+        )
+        self.fc_out = nn.Linear(d_model, vocab_size)
+
+    def forward(self, x, memory=None):
+        # x: (batch_size, seq_len)
+        x = self.embedding(x) * (self.d_model ** 0.5)
+        x = self.positional_encoding(x)
+        # x: (batch_size, seq_len, d_model)
+        mask = generate_square_subsequent_mask(x.size(1)).to(x.device)
+        x = self.transformer_decoder(x, memory, tgt_mask=mask)
+        x = self.fc_out(x)
+        return x
+
+    def predict_next_token(self, input_ids, memory=None, temperature=1.0):
         """
-        Compute the forward pass of the Transformer model.
+        Predict the next token ID (and hidden state) from the last token in input_ids.
         :param input_ids: Input token IDs.
-        :return: Output logits.
-        """
-        embeds = self.embedding(input_ids)
-        embeds = self.positional_encoding(embeds)
-        output = self.transformer_encoder(embeds)
-        logits = self.fc(self.dropout(output))
-        return logits
-    
-    def predict_next_token(self, input_ids, temperature=1.0):
-        """
-        Predict the next token ID from the last token in input_ids.
-        :param input_ids: Input token IDs.
+        :param memory: Memory (optional).
         :param temperature: Sampling temperature.
-        :return: next token ID
+        :return: next token ID, hidden state
         """
+
         self.eval()
 
         with torch.no_grad():
-            embeds = self.embedding(input_ids)
-            embeds = self.positional_encoding(embeds)
-            output = self.transformer_encoder(embeds)
-            logits = self.fc(self.dropout(output))
+            logits = self.forward(input_ids, memory)
             logits = logits[:, -1, :] / temperature
             probs = torch.softmax(logits, dim=-1)
             next_token_id = torch.multinomial(probs, num_samples=1)
             return next_token_id.squeeze(0)
         
-    def generate(self, tokenizer, prompt, max_length=50, eos_token_id=None, temperature=1.0, device='mps'):
+    def generate(self, tokenizer, prompt, max_length=50, eos_token_ids=None, temperature=1.0, device="cuda"):
         """
-        Generate text based on a prompt.
-        :param tokenizer: Tokenizer to convert text to token IDs.
-        :param prompt: Input text prompt.
-        :param max_length: Maximum length of generated text.
-        :param eos_token_id: End-of-sequence token ID (optional).
+        Generate text given a prompt.
+        :param tokenizer: Tokenizer for encoding/decoding.
+        :param prompt: Input prompt.
+        :param max_length: Maximum length of the generated sequence.
+        :param eos_token_ids: End-of-sequence token IDs (optional).
         :param temperature: Sampling temperature.
-        :param device: Device to run the model on ('cpu', 'cuda', or 'mps').
+        :param device: Device to run the model on ('mps', 'cuda', 'cpu').
         :return: Generated text.
         """
-        self.eval()
-        input_ids = tokenizer.encode(prompt, return_tensors='pt').to(device)
 
-        generated_text = prompt
+        self.eval()
+
+        input_ids = tokenizer.encode(prompt, out_type=int)
+        input_tensor = torch.tensor(input_ids, dtype=torch.long).to(device).unsqueeze(0)
+        generated_ids = []
+        memory = None
 
         for _ in range(max_length):
-            next_token_id = self.predict_next_token(input_ids, temperature=temperature)
-            generated_text += tokenizer.decode(next_token_id.item())
+            next_token_id = self.predict_next_token(input_tensor, memory, temperature)
+            generated_ids.append(next_token_id.item())
+            input_tensor = torch.cat([input_tensor, next_token_id.unsqueeze(0).unsqueeze(0)], dim=1)
 
-            if eos_token_id is not None and next_token_id.item() == eos_token_id:
+            if eos_token_ids and next_token_id.item() in eos_token_ids:
                 break
-
-            input_ids = torch.cat((input_ids, next_token_id.unsqueeze(0)), dim=1)
-
+        generated_text = tokenizer.decode(generated_ids)
         return generated_text
-    
     
     
