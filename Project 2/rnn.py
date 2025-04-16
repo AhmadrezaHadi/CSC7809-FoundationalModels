@@ -69,33 +69,51 @@ class RNNModel(nn.Module):
             next_token_id = torch.multinomial(probs, num_samples=1)
             return next_token_id.squeeze(0), hidden
         
-    def generate(self, tokenizer, prompt, max_length=50, eos_token_id=None, temperature=1.0, device='mps'):
-        """
-        Generate text based on a prompt.
-        :param tokenizer: Tokenizer for encoding/decoding.
-        :param prompt: Input prompt string.
-        :param max_length: Maximum length of generated text.
-        :param eos_token_id: End-of-sequence token ID (optional).
-        :param temperature: Sampling temperature.
-        :param device: Device to run the model on ('mps', 'cuda', 'cpu').
-        :return: Generated text string.
-        """
+    # def generate(self, tokenizer, prompt, max_length=50, eos_token_id=None, temperature=1.0, device='mps'):
+    #     """
+    #     Generate text based on a prompt.
+    #     :param tokenizer: Tokenizer for encoding/decoding.
+    #     :param prompt: Input prompt string.
+    #     :param max_length: Maximum length of generated text.
+    #     :param eos_token_id: End-of-sequence token ID (optional).
+    #     :param temperature: Sampling temperature.
+    #     :param device: Device to run the model on ('mps', 'cuda', 'cpu').
+    #     :return: Generated text string.
+    #     """
         
+    #     self.eval()
+    #     input_ids = tokenizer.encode(prompt, out_type=int)
+    #     input_tensor = torch.tensor(input_ids, dtype=torch.long).to(device).unsqueeze(0)  # shape (1, seq_len)
+
+    #     generated_ids = []
+    #     hidden = None
+
+    #     for _ in range(max_length):
+    #         next_token_id, hidden = self.predict_next_token(input_tensor, hidden, temperature)
+
+    #         if eos_token_id is not None and next_token_id.item() == eos_token_id:
+    #             break
+
+    #         generated_ids.append(next_token_id.item())
+    #         input_tensor = next_token_id.unsqueeze(0)
+
+    #     return tokenizer.decode(generated_ids, out_type=str)
+
+    def generate(self, tokenizer, prompt, max_length=50, eos_token_id=None, temperature=1.0, device='mps'):
         self.eval()
         input_ids = tokenizer.encode(prompt, out_type=int)
-        input_tensor = torch.tensor(input_ids, dtype=torch.long).to(device).unsqueeze(0)  # shape (1, seq_len)
+        generated_ids = input_ids.copy()
 
-        generated_ids = []
+        input_tensor = torch.tensor(input_ids, dtype=torch.long).unsqueeze(0).to(device)
         hidden = None
 
         for _ in range(max_length):
             next_token_id, hidden = self.predict_next_token(input_tensor, hidden, temperature)
-
             if eos_token_id is not None and next_token_id.item() == eos_token_id:
                 break
-
             generated_ids.append(next_token_id.item())
-            input_tensor = next_token_id.unsqueeze(0)
+            input_tensor = next_token_id.unsqueeze(0).to(device)  # shape [1, 1]
 
         return tokenizer.decode(generated_ids, out_type=str)
+
     

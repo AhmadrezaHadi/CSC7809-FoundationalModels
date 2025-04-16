@@ -93,10 +93,7 @@ class DecoderOnlyLM(nn.Module):
         for _ in range(max_length):
             next_token_id = self.predict_next_token(input_tensor, temperature)
             generated_ids.append(next_token_id.item())
-            print(f"{input_tensor.shape}")
-            print(f"{next_token_id.unsqueeze(0).shape}")
             input_tensor = torch.cat([input_tensor, next_token_id.unsqueeze(0)], dim=1)
-            print(f"{input_tensor.shape}")
             if eos_token_ids and next_token_id.item() in eos_token_ids:
                 break
         generated_text = tokenizer.decode(generated_ids)
