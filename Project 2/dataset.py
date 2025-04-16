@@ -14,7 +14,17 @@ class TextDataset(Dataset):
         :param max_sequence_length: Maximum sequence length for tokenization.
         """
         super().__init__()
-
+        
+        self.data = []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                obj = json.loads(line)
+                prompt = obj.get('prompt', '').strip()
+                completion = obj.get('completion', '').strip()
+                if prompt or completion:
+                    full_text = (prompt + " " + completion).strip()
+                    self.data.append(full_text)
+                    
         self.samples = []
         self.tokenizer = tokenizer
         self.max_sequence_length = max_sequence_length

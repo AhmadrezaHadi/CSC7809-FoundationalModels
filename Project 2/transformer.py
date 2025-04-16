@@ -1,9 +1,6 @@
 import torch
 import torch.nn as nn
 
-def generate_square_subsequent_mask(sz):
-    return torch.triu(torch.full((sz, sz), float('-inf')), diagonal=1)
-
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=512):
@@ -47,13 +44,13 @@ class DecoderOnlyLM(nn.Module):
 
     def forward(self, x):
         # x: (batch_size, seq_len)
-        x = self.embedding(x) * (self.d_model ** 0.5)
+        seq_len = x.size(1)
+        x = self.embedding(x)
         x = self.positional_encoding(x)
-        # x: (batch_size, seq_len, d_model)
-        mask = generate_square_subsequent_mask(x.size(1)).to(x.device)
+        mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool().to(x.device)
         x = self.transformer(x, mask=mask)
         x = self.fc_out(x)
-        return x
+        return x, None
 
     def predict_next_token(self, input_ids, temperature=1.0):
         """
@@ -66,7 +63,7 @@ class DecoderOnlyLM(nn.Module):
         self.eval()
 
         with torch.no_grad():
-            logits = self.forward(input_ids)
+            logits, _ = self.forward(input_ids)
             logits = logits[:, -1, :] / temperature
             probs = torch.softmax(logits, dim=-1)
             next_token_id = torch.multinomial(probs, num_samples=1)
